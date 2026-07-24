@@ -391,6 +391,88 @@ def save_activation_comparison(model, image_tensor):
     print(f"Saved: {path}")
 
 
+def save_feature_maps_overlay(model, image_tensor, label_idx, layer="conv1"):
+    """Overlay each channel's feature map as a heatmap on top of the original image."""
+    model.eval()
+    with torch.no_grad():
+        feat_maps = model.get_feature_maps(image_tensor.unsqueeze(0).to(DEVICE))
+
+    key_relu = f"{layer}_after_relu"
+    fmaps = feat_maps[key_relu][0].cpu().numpy()  # (C, H, W)
+    n_channels = fmaps.shape[0]
+    orig = _denormalize(image_tensor).numpy().transpose(1, 2, 0)  # (32, 32, 3)
+    orig_h, orig_w = orig.shape[:2]
+
+    cols = 8
+    rows = (n_channels + cols - 1) // cols
+
+    layer_labels = {
+        "conv1": "Conv1 (16ch, 16x16)",
+        "conv2": "Conv2 (32ch,  8x8)",
+    }
+    layer_suffixes = {"conv1": "08", "conv2": "09"}
+
+    fig, axes = plt.subplots(rows + 1, cols,
+                             figsize=(cols * 1.8 + 0.6, (rows + 1) * 1.8 + 1))
+    fig.suptitle(f"{layer_labels[layer]} — Feature Map Overlay\n"
+                 "Heatmap (viridis) overlaid on original image  |  "
+                 f"Label: {CIFAR10_CLASSES[label_idx]}",
+                 fontsize=11, fontweight="bold")
+
+    # top row: original image repeated for reference
+    for c in range(cols):
+        axes[0, c].imshow(orig)
+        axes[0, c].axis("off")
+        if c == 0:
+            axes[0, c].set_title("original", fontsize=7, fontweight="bold")
+
+    im_ref = None
+    for i in range(n_channels):
+        r = i // cols + 1
+        c = i  % cols
+        ax = axes[r, c]
+
+        fmap = fmaps[i]
+        fmap_up = np.repeat(np.repeat(fmap, orig_h // fmap.shape[0] or 1, axis=0),
+                            orig_w // fmap.shape[1] or 1, axis=1)
+        fmap_up = fmap_up[:orig_h, :orig_w]
+        if fmap_up.shape != (orig_h, orig_w):
+            pad_h = orig_h - fmap_up.shape[0]
+            pad_w = orig_w - fmap_up.shape[1]
+            fmap_up = np.pad(fmap_up, ((0, pad_h), (0, pad_w)), mode="edge")
+
+        fmap_norm = (fmap_up - fmap_up.min()) / (fmap_up.max() - fmap_up.min() + 1e-8)
+
+        ax.imshow(orig)
+        im_ref = ax.imshow(fmap_norm, cmap="viridis", alpha=0.55,
+                           interpolation="bilinear", vmin=0, vmax=1)
+        ax.set_title(f"ch{i}", fontsize=6)
+        ax.axis("off")
+
+    # hide unused axes in the last row
+    for j in range(n_channels % cols or cols, cols):
+        axes[-1, j].axis("off")
+
+    plt.tight_layout(rect=[0, 0, 0.92, 1])
+
+    # colorbar placed in the reserved right margin
+    if im_ref is not None:
+        pos_top = axes[1, 0].get_position()
+        pos_bot = axes[-1, 0].get_position()
+        cbar_ax = fig.add_axes([0.93, pos_bot.y0, 0.015,
+                                pos_top.y1 - pos_bot.y0])
+        cbar = fig.colorbar(im_ref, cax=cbar_ax)
+        cbar.set_ticks([0, 0.5, 1])
+        cbar.set_ticklabels(["low", "mid", "high"], fontsize=7)
+        cbar.set_label("activation", fontsize=7, labelpad=4)
+
+    suffix = layer_suffixes[layer]
+    path = os.path.join(OUTPUT_DIR, f"{suffix}_{layer}_overlay.png")
+    plt.savefig(path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"Saved: {path}")
+
+
 def save_test_predictions(model, testset, n=16):
     """Visualize predictions on test images."""
     model.eval()
@@ -467,6 +549,8 @@ if __name__ == "__main__":
     save_feature_maps(model, sample_image, sample_label, layer="conv1")
     save_feature_maps(model, sample_image, sample_label, layer="conv2")
     save_activation_comparison(model, sample_image)
+    save_feature_maps_overlay(model, sample_image, sample_label, layer="conv1")
+    save_feature_maps_overlay(model, sample_image, sample_label, layer="conv2")
 
     # step 8: save test predictions
     print("\n[7/7] Saving test predictions...")
