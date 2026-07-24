@@ -2,9 +2,11 @@
 CNN Training & Visualization Sample (study session)
 Dataset : CIFAR-10 (auto-download)
 Network :
-    Conv1(3->16, 3x3) -> ReLU -> MaxPool(2x2)
-    Conv2(16->32, 3x3) -> ReLU -> MaxPool(2x2)
-    Flatten -> FC(32x8x8->256) -> ReLU -> FC(256->10)
+    Conv1(3->16,  3x3) -> ReLU -> MaxPool(2x2)   32x32 -> 16x16
+    Conv2(16->32, 3x3) -> ReLU -> MaxPool(2x2)   16x16 ->  8x8
+    Conv3(32->64, 3x3) -> ReLU -> MaxPool(2x2)    8x8  ->  4x4
+    Conv4(64->128,3x3) -> ReLU -> MaxPool(2x2)    4x4  ->  2x2
+    Flatten -> FC(128x2x2->256) -> ReLU -> FC(256->10)
 
 Output files:
     output/01_network_architecture.png  network architecture diagram
@@ -12,8 +14,10 @@ Output files:
     output/03_training_curve.png        training curve (Loss / Accuracy)
     output/04_conv1_feature_maps.png    Conv1 feature maps (single test image)
     output/05_conv2_feature_maps.png    Conv2 feature maps (single test image)
-    output/06_activation_comparison.png activation distribution before/after ReLU
-    output/07_test_predictions.png      test image prediction results
+    output/06_conv3_feature_maps.png    Conv3 feature maps (single test image)
+    output/07_conv4_feature_maps.png    Conv4 feature maps (single test image)
+    output/08_activation_comparison.png activation distribution before/after ReLU
+    output/09_test_predictions.png      test image prediction results
 """
 
 import os
@@ -51,25 +55,37 @@ print(f"Device: {DEVICE}")
 # PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
 class SimpleCNN(nn.Module):
     """
-    Conv(3->16) -> ReLU -> MaxPool
-    Conv(16->32) -> ReLU -> MaxPool
-    FC(32x8x8->256) -> ReLU -> FC(256->10)
+    Conv(3->16)   -> ReLU -> MaxPool   32x32 -> 16x16
+    Conv(16->32)  -> ReLU -> MaxPool   16x16 ->  8x8
+    Conv(32->64)  -> ReLU -> MaxPool    8x8  ->  4x4
+    Conv(64->128) -> ReLU -> MaxPool    4x4  ->  2x2
+    FC(128x2x2->256) -> ReLU -> FC(256->10)
     """
     def __init__(self):
         super().__init__()
         # block 1
-        self.conv1 = nn.Conv2d(in_channels=3, out_channels=16,
+        self.conv1 = nn.Conv2d(in_channels=3,   out_channels=16,
                                kernel_size=3, padding=1)
         self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
 
         # block 2
-        self.conv2 = nn.Conv2d(in_channels=16, out_channels=32,
+        self.conv2 = nn.Conv2d(in_channels=16,  out_channels=32,
                                kernel_size=3, padding=1)
         self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
 
+        # block 3
+        self.conv3 = nn.Conv2d(in_channels=32,  out_channels=64,
+                               kernel_size=3, padding=1)
+        self.pool3 = nn.MaxPool2d(kernel_size=2, stride=2)
+
+        # block 4
+        self.conv4 = nn.Conv2d(in_channels=64,  out_channels=128,
+                               kernel_size=3, padding=1)
+        self.pool4 = nn.MaxPool2d(kernel_size=2, stride=2)
+
         # fully connected layers
-        # CIFAR-10: 32x32 -> pool1 -> 16x16 -> pool2 -> 8x8
-        self.fc1 = nn.Linear(32 * 8 * 8, 256)
+        # CIFAR-10: 32x32 -> 16x16 -> 8x8 -> 4x4 -> 2x2
+        self.fc1 = nn.Linear(128 * 2 * 2, 256)
         self.fc2 = nn.Linear(256, 10)
 
         self.relu = nn.ReLU()
@@ -77,22 +93,32 @@ class SimpleCNN(nn.Module):
     def forward(self, x):
         x = self.pool1(self.relu(self.conv1(x)))
         x = self.pool2(self.relu(self.conv2(x)))
+        x = self.pool3(self.relu(self.conv3(x)))
+        x = self.pool4(self.relu(self.conv4(x)))
         x = x.view(x.size(0), -1)   # Flatten
         x = self.relu(self.fc1(x))
         x = self.fc2(x)
         return x
 
-    #  returns intermediate outputs as a dict (for visualization) 
+    #  returns intermediate outputs as a dict (for visualization)
     def get_feature_maps(self, x):
         """Return per-layer outputs as a dictionary."""
         out = {}
-        after_conv1  = self.conv1(x)
-        after_relu1  = self.relu(after_conv1)
-        after_pool1  = self.pool1(after_relu1)
+        after_conv1 = self.conv1(x)
+        after_relu1 = self.relu(after_conv1)
+        after_pool1 = self.pool1(after_relu1)
 
-        after_conv2  = self.conv2(after_pool1)
-        after_relu2  = self.relu(after_conv2)
-        after_pool2  = self.pool2(after_relu2)
+        after_conv2 = self.conv2(after_pool1)
+        after_relu2 = self.relu(after_conv2)
+        after_pool2 = self.pool2(after_relu2)
+
+        after_conv3 = self.conv3(after_pool2)
+        after_relu3 = self.relu(after_conv3)
+        after_pool3 = self.pool3(after_relu3)
+
+        after_conv4 = self.conv4(after_pool3)
+        after_relu4 = self.relu(after_conv4)
+        after_pool4 = self.pool4(after_relu4)
 
         out["conv1_before_relu"] = after_conv1.detach()
         out["conv1_after_relu"]  = after_relu1.detach()
@@ -100,6 +126,12 @@ class SimpleCNN(nn.Module):
         out["conv2_before_relu"] = after_conv2.detach()
         out["conv2_after_relu"]  = after_relu2.detach()
         out["pool2"]             = after_pool2.detach()
+        out["conv3_before_relu"] = after_conv3.detach()
+        out["conv3_after_relu"]  = after_relu3.detach()
+        out["pool3"]             = after_pool3.detach()
+        out["conv4_before_relu"] = after_conv4.detach()
+        out["conv4_after_relu"]  = after_relu4.detach()
+        out["pool4"]             = after_pool4.detach()
         return out
 
 
@@ -203,14 +235,19 @@ def save_network_architecture():
 
     # block definition: (x_center, y_center, width, height, label, color)
     blocks = [
-        (0.05, 0.5, 0.07, 0.35, "Input\n32x32x3",      "#AED6F1"),
-        (0.18, 0.5, 0.07, 0.35, "Conv1\n3->16ch\n3x3",  "#A9DFBF"),
-        (0.30, 0.5, 0.07, 0.28, "ReLU",                 "#F9E79F"),
-        (0.42, 0.5, 0.07, 0.25, "MaxPool\n16x16x16",    "#FAD7A0"),
-        (0.54, 0.5, 0.07, 0.25, "Conv2\n16->32ch\n3x3", "#A9DFBF"),
-        (0.66, 0.5, 0.07, 0.20, "ReLU",                 "#F9E79F"),
-        (0.78, 0.5, 0.07, 0.18, "MaxPool\n8x8x32",      "#FAD7A0"),
-        (0.90, 0.5, 0.07, 0.35, "FC\n->256->10",        "#D2B4DE"),
+        (0.04, 0.5, 0.05, 0.35, "Input\n32x32x3",       "#AED6F1"),
+        (0.13, 0.5, 0.05, 0.35, "Conv1\n3->16\n3x3",    "#A9DFBF"),
+        (0.21, 0.5, 0.04, 0.28, "ReLU",                 "#F9E79F"),
+        (0.29, 0.5, 0.05, 0.28, "MaxPool\n16x16x16",    "#FAD7A0"),
+        (0.38, 0.5, 0.05, 0.25, "Conv2\n16->32\n3x3",   "#A9DFBF"),
+        (0.46, 0.5, 0.04, 0.20, "ReLU",                 "#F9E79F"),
+        (0.54, 0.5, 0.05, 0.20, "MaxPool\n8x8x32",      "#FAD7A0"),
+        (0.63, 0.5, 0.05, 0.18, "Conv3\n32->64\n3x3",   "#A9DFBF"),
+        (0.71, 0.5, 0.04, 0.15, "ReLU",                 "#F9E79F"),
+        (0.79, 0.5, 0.05, 0.15, "MaxPool\n4x4x64",      "#FAD7A0"),
+        (0.87, 0.5, 0.05, 0.13, "Conv4\n64->128\n3x3",  "#A9DFBF"),
+        (0.93, 0.5, 0.04, 0.12, "ReLU+Pool\n2x2x128",  "#FAD7A0"),
+        (0.99, 0.5, 0.05, 0.35, "FC\n->256->10",        "#D2B4DE"),
     ]
 
     for (x, y, w, h, label, color) in blocks:
@@ -231,7 +268,7 @@ def save_network_architecture():
 
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
-    ax.set_title("SimpleCNN Network Architecture", fontsize=13, fontweight="bold", pad=10)
+    ax.set_title("SimpleCNN Network Architecture (4 Conv Blocks)", fontsize=13, fontweight="bold", pad=10)
 
     path = os.path.join(OUTPUT_DIR, "01_network_architecture.png")
     plt.tight_layout()
@@ -326,8 +363,14 @@ def save_feature_maps(model, image_tensor, label_idx, layer="conv1"):
                      fontsize=10, fontweight="bold")
     ax_img.axis("off")
 
-    layer_label = "Conv1 (16ch, 16x16)" if layer == "conv1" else "Conv2 (32ch, 8x8)"
-    fig.suptitle(f"{layer_label} Feature Maps (after ReLU)\n"
+    layer_labels = {
+        "conv1": "Conv1 (16ch, 16x16)",
+        "conv2": "Conv2 (32ch,  8x8)",
+        "conv3": "Conv3 (64ch,  4x4)",
+        "conv4": "Conv4 (128ch, 2x2)",
+    }
+    layer_suffixes = {"conv1": "04", "conv2": "05", "conv3": "06", "conv4": "07"}
+    fig.suptitle(f"{layer_labels[layer]} Feature Maps (after ReLU)\n"
                  "Brighter = stronger activation",
                  fontsize=11, fontweight="bold", y=1.01)
 
@@ -341,7 +384,7 @@ def save_feature_maps(model, image_tensor, label_idx, layer="conv1"):
         ax.axis("off")
 
     plt.tight_layout()
-    suffix = "04" if layer == "conv1" else "05"
+    suffix = layer_suffixes[layer]
     path = os.path.join(OUTPUT_DIR, f"{suffix}_{layer}_feature_maps.png")
     plt.savefig(path, dpi=150, bbox_inches="tight")
     plt.close()
@@ -354,12 +397,14 @@ def save_activation_comparison(model, image_tensor):
     with torch.no_grad():
         feat_maps = model.get_feature_maps(image_tensor.unsqueeze(0).to(DEVICE))
 
-    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+    fig, axes = plt.subplots(4, 2, figsize=(12, 16))
     fig.suptitle("Activation Distribution: Before vs After ReLU", fontsize=12, fontweight="bold")
 
     pairs = [
         ("conv1_before_relu", "conv1_after_relu", "Conv1"),
         ("conv2_before_relu", "conv2_after_relu", "Conv2"),
+        ("conv3_before_relu", "conv3_after_relu", "Conv3"),
+        ("conv4_before_relu", "conv4_after_relu", "Conv4"),
     ]
 
     for row, (key_before, key_after, title) in enumerate(pairs):
@@ -385,7 +430,90 @@ def save_activation_comparison(model, image_tensor):
                   bbox=dict(boxstyle="round", facecolor="#F9E79F", alpha=0.8))
 
     plt.tight_layout()
-    path = os.path.join(OUTPUT_DIR, "06_activation_comparison.png")
+    path = os.path.join(OUTPUT_DIR, "08_activation_comparison.png")
+    plt.savefig(path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"Saved: {path}")
+
+
+def save_feature_maps_overlay(model, image_tensor, label_idx, layer="conv1"):
+    """Overlay each channel's feature map as a heatmap on top of the original image."""
+    model.eval()
+    with torch.no_grad():
+        feat_maps = model.get_feature_maps(image_tensor.unsqueeze(0).to(DEVICE))
+
+    key_relu = f"{layer}_after_relu"
+    fmaps = feat_maps[key_relu][0].cpu().numpy()  # (C, H, W)
+    n_channels = fmaps.shape[0]
+    orig = _denormalize(image_tensor).numpy().transpose(1, 2, 0)  # (32, 32, 3)
+    orig_h, orig_w = orig.shape[:2]
+
+    cols = 8
+    rows = (n_channels + cols - 1) // cols
+
+    layer_labels = {
+        "conv1": "Conv1 (16ch, 16x16)",
+        "conv2": "Conv2 (32ch,  8x8)",
+        "conv3": "Conv3 (64ch,  4x4)",
+        "conv4": "Conv4 (128ch, 2x2)",
+    }
+    layer_suffixes = {"conv1": "10", "conv2": "11", "conv3": "12", "conv4": "13"}
+
+    fig, axes = plt.subplots(rows + 1, cols,
+                             figsize=(cols * 1.8 + 0.6, (rows + 1) * 1.8 + 1))
+    fig.suptitle(f"{layer_labels[layer]} — Feature Map Overlay\n"
+                 "Heatmap (viridis) overlaid on original image  |  "
+                 f"Label: {CIFAR10_CLASSES[label_idx]}",
+                 fontsize=11, fontweight="bold")
+
+    # top row: original image repeated for reference
+    for c in range(cols):
+        axes[0, c].imshow(orig)
+        axes[0, c].axis("off")
+        if c == 0:
+            axes[0, c].set_title("original", fontsize=7, fontweight="bold")
+
+    im_ref = None
+    for i in range(n_channels):
+        r = i // cols + 1
+        c = i  % cols
+        ax = axes[r, c]
+
+        fmap = fmaps[i]
+        fmap_up = np.repeat(np.repeat(fmap, orig_h // fmap.shape[0] or 1, axis=0),
+                            orig_w // fmap.shape[1] or 1, axis=1)
+        fmap_up = fmap_up[:orig_h, :orig_w]
+        if fmap_up.shape != (orig_h, orig_w):
+            pad_h = orig_h - fmap_up.shape[0]
+            pad_w = orig_w - fmap_up.shape[1]
+            fmap_up = np.pad(fmap_up, ((0, pad_h), (0, pad_w)), mode="edge")
+
+        fmap_norm = (fmap_up - fmap_up.min()) / (fmap_up.max() - fmap_up.min() + 1e-8)
+
+        ax.imshow(orig)
+        im_ref = ax.imshow(fmap_norm, cmap="viridis", alpha=0.55,
+                           interpolation="bilinear", vmin=0, vmax=1)
+        ax.set_title(f"ch{i}", fontsize=6)
+        ax.axis("off")
+
+    # hide unused axes in the last row
+    for j in range(n_channels % cols or cols, cols):
+        axes[-1, j].axis("off")
+
+    plt.tight_layout(rect=[0, 0, 0.92, 1])
+
+    # colorbar: derive position from actual axes layout after tight_layout
+    if im_ref is not None:
+        pos_top = axes[1, 0].get_position()
+        pos_bot = axes[-1, 0].get_position()
+        cbar_ax = fig.add_axes([0.93, pos_bot.y0, 0.015,
+                                pos_top.y1 - pos_bot.y0])
+        cbar = fig.colorbar(im_ref, cax=cbar_ax)
+        cbar.set_ticks([0, 0.5, 1])
+        cbar.set_ticklabels(["low", "mid", "high"], fontsize=7)
+        cbar.set_label("activation", fontsize=7, labelpad=4)
+    suffix = layer_suffixes[layer]
+    path = os.path.join(OUTPUT_DIR, f"{suffix}_{layer}_overlay.png")
     plt.savefig(path, dpi=150, bbox_inches="tight")
     plt.close()
     print(f"Saved: {path}")
@@ -422,7 +550,7 @@ def save_test_predictions(model, testset, n=16):
         ax.axis("off")
 
     plt.tight_layout()
-    path = os.path.join(OUTPUT_DIR, "07_test_predictions.png")
+    path = os.path.join(OUTPUT_DIR, "09_test_predictions.png")
     plt.savefig(path, dpi=150, bbox_inches="tight")
     plt.close()
     print(f"Saved: {path}")
@@ -466,7 +594,13 @@ if __name__ == "__main__":
     sample_image, sample_label = testset[0]
     save_feature_maps(model, sample_image, sample_label, layer="conv1")
     save_feature_maps(model, sample_image, sample_label, layer="conv2")
+    save_feature_maps(model, sample_image, sample_label, layer="conv3")
+    save_feature_maps(model, sample_image, sample_label, layer="conv4")
     save_activation_comparison(model, sample_image)
+    save_feature_maps_overlay(model, sample_image, sample_label, layer="conv1")
+    save_feature_maps_overlay(model, sample_image, sample_label, layer="conv2")
+    save_feature_maps_overlay(model, sample_image, sample_label, layer="conv3")
+    save_feature_maps_overlay(model, sample_image, sample_label, layer="conv4")
 
     # step 8: save test predictions
     print("\n[7/7] Saving test predictions...")
