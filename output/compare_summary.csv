@@ -1,0 +1,4 @@
+model,n_params,best_val_acc,best_epoch,final_val_acc,final_val_loss,train_time_sec
+2conv,532202,0.7289,10,0.7289,0.772807,65.0
+4conv,231338,0.754,10,0.754,0.708716,67.2
+6conv,1247658,0.7362,10,0.7362,0.774071,68.5
