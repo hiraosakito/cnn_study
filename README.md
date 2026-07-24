@@ -20,16 +20,21 @@ CIFAR-10 データセットは初回実行時に `data/` へ自動ダウンロ�
 cnn-ws/
 ├── cnn_visualize.py          # メインスクリプト
 ├── requiements.txt           # 依存ライブラリ
-├── data/
-│   └── cifar-10-batches-py/  # CIFAR-10 データセット（自動ダウンロード）
-└── output/                   # 生成された可視化画像（7枚）
+├── data/                     # CIFAR-10 データセット（自動ダウンロード・gitignore済み）
+└── output/                   # 生成された可視化画像（13枚）
     ├── 01_network_architecture.png
     ├── 02_conv1_filters.png
     ├── 03_training_curve.png
     ├── 04_conv1_feature_maps.png
     ├── 05_conv2_feature_maps.png
-    ├── 06_activation_comparison.png
-    └── 07_test_predictions.png
+    ├── 06_conv3_feature_maps.png
+    ├── 07_conv4_feature_maps.png
+    ├── 08_activation_comparison.png
+    ├── 09_test_predictions.png
+    ├── 10_conv1_overlay.png
+    ├── 11_conv2_overlay.png
+    ├── 12_conv3_overlay.png
+    └── 13_conv4_overlay.png
 ```
 
 ---
@@ -45,8 +50,14 @@ cnn-ws/
 | Conv2 | Conv2d | in=16, out=32, kernel=3×3, padding=1 | 16×16×32 |
 | ReLU | 活性化関数 | — | 16×16×32 |
 | Pool2 | MaxPool2d | kernel=2×2, stride=2 | 8×8×32 |
-| Flatten | — | — | 2048 |
-| FC1 | Linear | in=2048, out=256 | 256 |
+| Conv3 | Conv2d | in=32, out=64, kernel=3×3, padding=1 | 8×8×64 |
+| ReLU | 活性化関数 | — | 8×8×64 |
+| Pool3 | MaxPool2d | kernel=2×2, stride=2 | 4×4×64 |
+| Conv4 | Conv2d | in=64, out=128, kernel=3×3, padding=1 | 4×4×128 |
+| ReLU | 活性化関数 | — | 4×4×128 |
+| Pool4 | MaxPool2d | kernel=2×2, stride=2 | 2×2×128 |
+| Flatten | — | — | 512 |
+| FC1 | Linear | in=512, out=256 | 256 |
 | ReLU | 活性化関数 | — | 256 |
 | FC2 | Linear | in=256, out=10 | 10（クラス数） |
 
@@ -62,6 +73,12 @@ cnn-ws/
 | `conv2_before_relu` | Conv2 適用後・ReLU 前 |
 | `conv2_after_relu` | ReLU 後 |
 | `pool2` | MaxPool2 後 |
+| `conv3_before_relu` | Conv3 適用後・ReLU 前 |
+| `conv3_after_relu` | ReLU 後 |
+| `pool3` | MaxPool3 後 |
+| `conv4_before_relu` | Conv4 適用後・ReLU 前 |
+| `conv4_after_relu` | ReLU 後 |
+| `pool4` | MaxPool4 後 |
 
 ---
 
@@ -111,7 +128,7 @@ cnn-ws/
 [3/7] Conv1 フィルタを保存（学習前の初期状態）
 [4/7] 学習（10エポック）
 [5/7] 学習曲線を保存
-[6/7] 特徴マップ・活性化分布を保存（テスト画像 1枚）
+[6/7] 特徴マップ・活性化分布・オーバーレイを保存（テスト画像 1枚、全4層）
 [7/7] テスト画像の予測結果を保存
 ```
 
@@ -153,21 +170,42 @@ cnn-ws/
 - 内容: 同一テスト画像の Conv2 出力（ReLU 後）を 32 チャンネル分表示
 - 生成タイミング: **学習後**
 
-### `06_activation_comparison.png` — ReLU 前後の活性化分布
+### `06_conv3_feature_maps.png` — Conv3 特徴マップ
+
+- 関数: `save_feature_maps(model, image_tensor, label_idx, layer="conv3")`
+- 内容: 同一テスト画像の Conv3 出力（ReLU 後）を 64 チャンネル分表示
+- 生成タイミング: **学習後**
+
+### `07_conv4_feature_maps.png` — Conv4 特徴マップ
+
+- 関数: `save_feature_maps(model, image_tensor, label_idx, layer="conv4")`
+- 内容: 同一テスト画像の Conv4 出力（ReLU 後）を 128 チャンネル分表示
+- 生成タイミング: **学習後**
+
+### `08_activation_comparison.png` — ReLU 前後の活性化分布
 
 - 関数: `save_activation_comparison(model, image_tensor)`
-- 内容: 2行×2列のヒストグラム
-  - Conv1 / Conv2 それぞれで ReLU 前後を比較
+- 内容: 4行×2列のヒストグラム
+  - Conv1〜Conv4 それぞれで ReLU 前後を比較
   - ReLU 前: 負の値を含む分布（青色）、x=0 に赤い垂直線
   - ReLU 後: 負の値がゼロにクリップされた分布（緑色）、ゼロ率を表示
 - 生成タイミング: **学習後**
 
-### `07_test_predictions.png` — テスト画像の予測結果
+### `09_test_predictions.png` — テスト画像の予測結果
 
 - 関数: `save_test_predictions(model, testset, n=16)`
-- 内容: テストセット先頭 16 枚を 2行×8列で表示
+- 内容: テストセット先頭 16 枚を 2行×8列で表示（ブランチ間比較のため固定）
   - 正解: 緑の枠線 / 不正解: 赤の枠線
   - タイトルに正解ラベル（GT）と予測ラベル（Pred）を表示
+- 生成タイミング: **学習後**
+
+### `10〜13_conv*_overlay.png` — 特徴マップオーバーレイ
+
+- 関数: `save_feature_maps_overlay(model, image_tensor, label_idx, layer)`
+- 内容: 各層の特徴マップを 32×32 にアップスケールし、元画像に半透明で重ねて表示
+  - カラーマップ: viridis（黄=強い反応、紫=弱い反応）
+  - 右端にカラーバー（low/mid/high）付き
+  - Conv1〜Conv4 の4層分を個別ファイルで出力
 - 生成タイミング: **学習後**
 
 ---
